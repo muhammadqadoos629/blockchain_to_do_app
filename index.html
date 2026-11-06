@@ -1,0 +1,503 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>ChainTask | Decentralized To-Do List</title>
+
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Ethers.js version 6 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js"></script>
+</head>
+
+<body>
+
+    <header>
+        <div class="logo">ChainTask.</div>
+
+        <button id="connectBtn" onclick="connectWallet()">
+            Connect Wallet
+        </button>
+    </header>
+
+    <main>
+
+        <section class="hero">
+            <p class="tag">DECENTRALIZED PRODUCTIVITY</p>
+
+            <h1>Your tasks.<br>
+                Your blockchain.</h1>
+
+            <p class="subtitle">
+                Manage your daily tasks securely using Ethereum
+                Sepolia blockchain technology.
+            </p>
+
+            <div class="network-info">
+                <div class="app-logo">
+    <img
+        src="https://placehold.co/160x160/3156d3/ffffff.png?text=ChainTask"
+        alt="ChainTask Logo"
+        width="100"
+        height="100"
+    >
+</div>
+                <span class="dot"></span>
+                Ethereum Sepolia Testnet
+            </div>
+        </section>
+
+        <section class="dashboard">
+
+            <div class="stats-card">
+                <p>Total Tasks</p>
+                <h2 id="taskCount">0</h2>
+            </div>
+
+            <div class="wallet-card">
+                <p>Connected Wallet</p>
+                <h3 id="walletAddress">Not Connected</h3>
+            </div>
+
+        </section>
+
+        <section class="task-section">
+
+            <h2>My Tasks</h2>
+
+            <p class="section-description">
+                Add tasks and record their completion on the blockchain.
+            </p>
+
+            <div class="task-input">
+
+                <input
+                    type="text"
+                    id="taskInput"
+                    placeholder="What do you need to accomplish?"
+                >
+
+                <button onclick="addTask()">
+                    + Add Task
+                </button>
+
+            </div>
+
+            <div id="taskList">
+                <p class="empty-message">
+                    Connect your wallet to view your tasks.
+                </p>
+            </div>
+            <p id="transactionStatus" class="transaction-status"></p>
+
+        </section>
+
+        <section class="about">
+
+            <h2>Powered by Blockchain</h2>
+
+            <p>
+                ChainTask uses a Solidity smart contract deployed
+                on the Ethereum Sepolia testnet. Each task is
+                stored on the blockchain and associated with
+                the user's wallet address.
+            </p>
+
+            <ul>
+                <li>Decentralized task storage</li>
+                <li>Wallet-based user identification</li>
+                <li>Transparent blockchain transactions</li>
+                <li>Smart contract powered task management</li>
+            </ul>
+
+            <a
+                href="https://sepolia.etherscan.io/address/0x15f86Eb2CC9B4436925d1741D513328Eac63dbF3"
+                target="_blank"
+            >
+                View Smart Contract on Etherscan →
+            </a>
+
+        </section>
+
+    </main>
+
+    <footer>
+        <p>ChainTask | Built on Ethereum Sepolia</p>
+        <p>MG3012 - Blockchain Technology for Business</p>
+    </footer>
+
+
+    <script>
+
+        // 1. Smart contract address
+        const contractAddress =
+            "0x15f86Eb2CC9B4436925d1741D513328Eac63dbF3";
+
+
+        // 2. Smart contract ABI
+        const contractABI = [
+            "function addTask(string memory _description) public",
+            "function getMyTasks() public view returns (tuple(string description, bool completed)[] memory)",
+            "function toggleTask(uint256 _taskIndex) public",
+            "function getTaskCount() public view returns (uint256)"
+        ];
+
+
+        let provider;
+        let signer;
+        let contract;
+
+
+        // 3. Connect MetaMask
+        async function connectWallet() {
+
+            try {
+
+                if (!window.ethereum) {
+                    alert("Please install MetaMask first!");
+                    return;
+                }
+
+                // Request wallet connection
+                await window.ethereum.request({
+                    method: "eth_requestAccounts"
+                });
+
+                // Check network
+                const network = await window.ethereum.request({
+                    method: "eth_chainId"
+                });
+
+                // Sepolia chain ID = 11155111
+                if (network !== "0xaa36a7") {
+
+                    await window.ethereum.request({
+                        method: "wallet_switchEthereumChain",
+                        params: [{ chainId: "0xaa36a7" }]
+                    });
+
+                }
+
+                // Create provider and signer
+                provider = new ethers.BrowserProvider(window.ethereum);
+
+                signer = await provider.getSigner();
+
+                // Connect contract
+                contract = new ethers.Contract(
+                    contractAddress,
+                    contractABI,
+                    signer
+                );
+
+                // Display wallet address
+                const address = await signer.getAddress();
+
+                document.getElementById("walletAddress").innerText =
+                    address.substring(0, 6) + "..." +
+                    address.substring(address.length - 4);
+
+                document.getElementById("connectBtn").innerText =
+                    "Wallet Connected";
+
+                // Load tasks
+                await loadTasks();
+
+            }
+
+            catch (error) {
+
+                console.error(error);
+
+                alert("Wallet connection failed: " + error.message);
+
+            }
+
+        }
+
+
+        // 4. Add a new task
+        function showStatus(message, type = "info") {
+    const status = document.getElementById("transactionStatus");
+    status.innerText = message;
+    status.className = "transaction-status " + type;
+}
+        async function addTask() {
+
+            try {
+
+                if (!contract) {
+                    alert("Please connect your wallet first!");
+                    return;
+                }
+
+                const description =
+                    document.getElementById("taskInput").value.trim();
+
+                if (description === "") {
+                    alert("Please enter a task!");
+                    return;
+                }
+
+                const button = document.querySelector(".task-input button");
+
+                button.disabled = true;
+                button.innerText = "Processing...";
+
+                // Call smart contract
+                const transaction = await contract.addTask(description);
+                showStatus("Please confirm the transaction in MetaMask...", "info");
+                alert("Transaction submitted! Please wait for confirmation.");
+
+                // Wait for blockchain confirmation
+                await transaction.wait();
+                showStatus("Task successfully saved on Sepolia!", "success");
+
+                document.getElementById("taskInput").value = "";
+
+                alert("Task added successfully!");
+
+                await loadTasks();
+
+            }
+
+            catch (error) {
+                showStatus("Transaction failed: " + error.message, "error");
+
+                console.error(error);
+                alert("Error adding task: " + error.message);
+
+            }
+
+            finally {
+
+                const button = document.querySelector(".task-input button");
+
+                button.disabled = false;
+                button.innerText = "+ Add Task";
+
+            }
+
+        }
+
+
+        // 5. Load tasks from blockchain
+        async function loadTasks() {
+
+            try {
+
+                if (!contract) return;
+
+                const tasks = await contract.getMyTasks();
+
+                const count = await contract.getTaskCount();
+
+                document.getElementById("taskCount").innerText =
+                    count.toString();
+
+                const taskList = document.getElementById("taskList");
+
+                taskList.innerHTML = "";
+
+                if (tasks.length === 0) {
+
+                    taskList.innerHTML =
+                        '<p class="empty-message">No tasks yet. Add your first task!</p>';
+
+                    return;
+
+                }
+
+                tasks.forEach((task, index) => {
+
+                    const taskCard = document.createElement("div");
+
+                    taskCard.className = "task-card";
+
+                    if (task.completed) {
+                        taskCard.classList.add("completed");
+                    }
+
+                    const taskName = document.createElement("span");
+
+                    taskName.innerText = task.description;
+
+                    const status = document.createElement("span");
+
+                    status.innerText = task.completed
+                        ? "Completed"
+                        : "Pending";
+
+                    status.className = "task-status";
+
+                    const button = document.createElement("button");
+
+                    button.innerText = task.completed
+                        ? "Undo"
+                        : "Complete";
+
+                    button.onclick = () => toggleTask(index);
+
+                    taskCard.appendChild(taskName);
+                    taskCard.appendChild(status);
+                    taskCard.appendChild(button);
+
+                    taskList.appendChild(taskCard);
+
+                });
+
+            }
+
+            catch (error) {
+
+                console.error(error);
+                alert("Could not load tasks.");
+
+            }
+
+        }
+
+
+        // 6. Toggle task completion
+        async function toggleTask(index) {
+
+            try {
+
+                const transaction = await contract.toggleTask(index);
+
+                alert("Updating task on blockchain...");
+
+                await transaction.wait();
+
+                await loadTasks();
+
+                alert("Task status updated successfully!");
+
+            }
+
+            catch (error) {
+
+                console.error(error);
+                alert("Transaction failed: " + error.message);
+
+            }
+
+        }
+
+
+        
+// 7. Automatically restore wallet connection on page refresh
+
+async function checkWalletConnection() {
+
+    if (!window.ethereum) {
+        return;
+    }
+
+    try {
+
+        // Check accounts already authorized by MetaMask
+        const accounts = await window.ethereum.request({
+            method: "eth_accounts"
+        });
+
+        if (accounts.length > 0) {
+
+            // Reinitialize ethers
+            provider = new ethers.BrowserProvider(window.ethereum);
+
+            signer = await provider.getSigner();
+
+            // Check Sepolia network
+            const network = await provider.getNetwork();
+
+            if (network.chainId !== 11155111n) {
+                document.getElementById("walletAddress").innerText =
+                    "Please switch to Sepolia";
+                return;
+            }
+
+            // Reconnect smart contract
+            contract = new ethers.Contract(
+                contractAddress,
+                contractABI,
+                signer
+            );
+
+            const address = await signer.getAddress();
+
+            // Restore wallet display
+            document.getElementById("walletAddress").innerText =
+                address.substring(0, 6) + "..." +
+                address.substring(address.length - 4);
+
+            document.getElementById("connectBtn").innerText =
+                "Wallet Connected";
+
+            document.getElementById("connectBtn").style.background =
+                "#16834c";
+
+            // Fetch previously saved blockchain tasks
+            await loadTasks();
+
+            console.log("Previous wallet connection restored!");
+
+        }
+
+    }
+
+    catch (error) {
+
+        console.error("Wallet restoration error:", error);
+
+    }
+
+}
+
+
+// Run automatically whenever page loads
+window.addEventListener("DOMContentLoaded", checkWalletConnection);
+
+
+// Listen for wallet changes without unnecessarily refreshing the page
+if (window.ethereum) {
+
+    window.ethereum.on("accountsChanged", async (accounts) => {
+
+        contract = null;
+        signer = null;
+        provider = null;
+
+        if (accounts.length > 0) {
+            await connectWallet();
+        } else {
+            document.getElementById("walletAddress").innerText =
+                "Not Connected";
+
+            document.getElementById("connectBtn").innerText =
+                "Connect Wallet";
+
+            document.getElementById("taskList").innerHTML =
+                '<p class="empty-message">Connect your wallet to view your tasks.</p>';
+
+            document.getElementById("taskCount").innerText = "0";
+        }
+
+    });
+
+    window.ethereum.on("chainChanged", () => {
+        window.location.reload();
+    });
+
+}
+
+
+    </script>
+
+</body>
+
+</html>
